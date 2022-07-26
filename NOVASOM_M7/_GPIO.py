@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 
 # Import modules
 import os.path
@@ -8,8 +8,9 @@ from time import sleep
 
 # Define static module variables
 var_gpio_root = '/sys/class/gpio'
-RK = 'RK'
+NOVA = 'NOVA'
 BOARD = 'BOARD'
+BCM = 'BCM'
 HIGH = 1
 LOW = 0
 OUT = 'out'
@@ -17,13 +18,17 @@ IN = 'in'
 RISING = 'rising'
 FALLING = 'falling'
 BOTH = 'both'
+PUD_UP = 0
+PUD_DOWN = 1
 ACT_HIGH = 0
 ACT_LOW = 1
 VERSION = '0.2.0'
+RPI_INFO = {'P1_REVISION': 3, 'RAM': '1024M', 'REVISION': 'a22082', 'TYPE': 'Pi 3 Model B', 'PROCESSOR': 'BCM2837', 'MANUFACTURER': 'Embest'}
 
 # Define GPIO arrays
-NOVASOM_M7_valid_channels = [0, 67, 76, 79, 80, 81, 83, 84, 85, 86, 87, 88, 89, 96, 97, 98, 100, 101, 102, 103, 104]
-BOARD_to_NOVASOM_M7 = [-1, -1, -1, 89, -1, 88, -1, -1, -1, -1, -1, 81, 67, 0, -1, 100, 101, -1, 102, 97, -1, 98, 103, 96, 104, -1, 76, -1, -1, -1, -1, -1, 79, 87, -1, 84, 86, 85, 83, -1, 80]
+NOVA_valid_channels = [0, 67, 76, 79, 80, 81, 83, 84, 85, 86, 87, 88, 89, 96, 97, 98, 100, 101, 102, 103, 104]
+BOARD_to_NOVA = [-1, -1, -1, 89, -1, 88, -1, -1, -1, -1, -1, 81, 67, 0, -1, 100, 101, -1, 102, 97, -1, 98, 103, 96, 104, -1, 76, -1, -1, -1, -1, -1, 79, 87, -1, 84, 86, 85, 83, -1, 80]
+BCM_to_NOVA = [-1, -1, 89, 88, -1, -1, -1, 76, 104, 98, 97, 96, 79, 87, -1, -1, 86, 81, 67, 84, 83, 80, 100, 101, 102, 103, 85, 0]
 
 # Define dynamic module variables
 gpio_mode = None
@@ -31,33 +36,35 @@ warningmode = 1
 
 # GPIO Functions
 def setmode(mode):
-    if mode in ['RK','BOARD']:
+    if mode in ['NOVA','BOARD','BCM']:
         global gpio_mode
         gpio_mode = mode
     else:
-        print("An invalid mode ({}) was passed to setmode(). Use one of the following: RK, BOARD".format(mode))
+        print("An invalid mode ({}) was passed to setmode(). Use one of the following: NOVA, BOARD, BCM".format(mode))
 
 def getmode():
-    if gpio_mode in ['RK','BOARD']:
+    if gpio_mode in ['NOVA','BOARD','BCM']:
         return gpio_mode
     else:
         print("Error: An invalid mode ({}) is currently set".format(gpio_mode))
 
 def get_gpio_number(channel):
-    if gpio_mode in ['RK','BOARD']:
-        # Convert to NOVASOM_M7 GPIO
+    if gpio_mode in ['NOVA','BOARD','BCM']:
+        # Convert to NOVA GPIO
         if gpio_mode == BOARD:
-            channel_new = BOARD_to_NOVASOM_M7[channel]
-        if gpio_mode == RK:
+            channel_new = BOARD_to_NOVA[channel]
+        if gpio_mode == BCM:
+            channel_new = BCM_to_NOVA[channel]
+        if gpio_mode == NOVA:
             channel_new = channel
         # Check that the GPIO is valid
-        if channel_new in NOVASOM_M7_valid_channels:
+        if channel_new in NOVA_valid_channels:
             return channel_new
         else:
             print("Error: GPIO not supported on {0} {1}".format(gpio_mode, channel))
             return None
     else:
-        print("RuntimeError: Please set pin numbering mode using GPIO.setmode(GPIO.RK) or GPIO.setmode(GPIO.BOARD)")
+        print("RuntimeError: Please set pin numbering mode using GPIO.setmode(GPIO.NOVA), GPIO.setmode(GPIO.BOARD), or GPIO.setmode(GPIO.BCM)")
         return None
 
 def gpio_function(channel):
@@ -115,7 +122,7 @@ def validate_direction(channel, validation_type='both'):
         print("Error: {} is not a valid direction. use one of the following: input, output, both")
         return
 
-def setup(channel, direction, act_high_low=ACT_HIGH, initial=LOW):
+def setup(channel, direction, pull_up_down=PUD_DOWN, initial=LOW):
     # If channel is an intiger, convert intiger to list
     if isinstance(channel, int) == True:
         channel = [channel]
@@ -166,9 +173,9 @@ def setup(channel, direction, act_high_low=ACT_HIGH, initial=LOW):
             try:
                 var_gpio_filepath = str(var_gpio_root) + "/gpio" + str(channel_int) + "/active_low"
                 with open(var_gpio_filepath, 'w') as file:
-                    file.write(str(act_high_low))
+                    file.write(str(pull_up_down))
             except:
-                print("Error: Unable to set active high/low condition")
+                print("Error: Unable to set internal pullup resistor state")
                 return False
     return True
 
@@ -209,7 +216,7 @@ def input(channel):
     try:
         var_gpio_filepath = str(var_gpio_root) + "/gpio" + str(channel_int) + "/value"
         with open(var_gpio_filepath, 'r') as file:
-            return file.read(1)
+            return int(file.read(1))
     except:
         print("Error: Unable to get GPIO value")
 
